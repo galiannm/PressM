@@ -24,7 +24,7 @@ body,
 .overlay {
   display: flex;
   align-items: center;
-  gap: 14px;
+  gap: 12px;
   padding: 18px 24px;
   background: rgba(20, 20, 20, 0.88);
   backdrop-filter: blur(20px);
@@ -34,43 +34,25 @@ body,
   box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
   color: #fff;
   user-select: none;
-  min-width: 300px;
+  min-width: 260px;
   max-width: 380px;
-  transition: max-width 0.2s ease;
 }
 
-.overlay.has-transcript {
-  max-width: 380px;
-  align-items: flex-start;
-}
-
-/* Icon */
-.icon-wrap {
-  flex-shrink: 0;
+/* Waveform */
+.waveform {
   display: flex;
   align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+  gap: 4px;
+  height: 32px;
 }
 
-.icon-wrap.listening {
-  color: #ff453a;
-  animation: pulse 1.2s ease-in-out infinite;
-}
-
-.icon-wrap.done {
-  color: #30d158;
-}
-
-.icon-wrap.processing {
-  color: #636366;
-  animation: spin 1s linear infinite;
-}
-
-.icon-wrap.error {
-  color: #ff9f0a;
+.waveform-bar {
+  width: 4px;
+  border-radius: 2px;
+  background: #ff453a;
+  height: calc(var(--bar-level, 0.08) * 32px);
+  min-height: 4px;
+  transition: height 60ms ease-out;
 }
 
 /* Text area */
@@ -79,20 +61,20 @@ body,
   flex-direction: column;
   gap: 3px;
   min-width: 0;
+  flex: 1;
 }
 
-.listening-text {
+.main-text {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", sans-serif;
-  font-size: 17px;
+  font-size: 16px;
   font-weight: 600;
-  letter-spacing: -0.3px;
+  letter-spacing: -0.2px;
   color: #fff;
-  white-space: nowrap;
 }
 
 .hint-text {
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 400;
   color: rgba(255, 255, 255, 0.45);
 }
@@ -106,10 +88,30 @@ body,
   word-break: break-word;
 }
 
-/* Animations */
-@keyframes pulse {
-  0%, 100% { opacity: 1; transform: scale(1); }
-  50%       { opacity: 0.55; transform: scale(0.88); }
+/* Icon states */
+.icon-wrap {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  font-size: 16px;
+}
+
+.icon-wrap.processing {
+  color: #636366;
+  animation: spin 1s linear infinite;
+}
+
+.icon-wrap.error {
+  color: #ff9f0a;
+}
+
+.icon-wrap.done {
+  color: #30d158;
+  font-weight: 700;
 }
 
 @keyframes spin {

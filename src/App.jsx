@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { Mic, MicOff, Loader } from "lucide-react";
+import { invoke } from "@tauri-apps/api/core";
+import { MicOff, Loader } from "lucide-react";
 import "./App.css";
 
 const STATUS = {
@@ -11,96 +12,83 @@ const STATUS = {
   ERROR: "error",
 };
 
+const BAR_COUNT = 5;
+const BAR_PHASES = [0, 0.4, 0.8, 0.4, 0]; // symmetric spread
+
 function App() {
   const [status, setStatus] = useState(STATUS.LISTENING);
   const [transcript, setTranscript] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
-  const recognitionRef = useRef(null);
+  const [level, setLevel] = useState(0);
   const hideTimerRef = useRef(null);
+  const modelPathRef = useRef(null);
 
   const hideWindow = async () => {
     await getCurrentWindow().hide();
     setTranscript("");
     setStatus(STATUS.LISTENING);
     setErrorMsg("");
+    setLevel(0);
   };
 
-  const startListening = () => {
-    const SpeechRecognition =
-      window.SpeechRecognition || window.webkitSpeechRecognition;
+  const startListening = async () => {
+    setStatus(STATUS.LISTENING);
+    setTranscript("");
+    setErrorMsg("");
+    setLevel(0);
 
-    if (!SpeechRecognition) {
-      setStatus(STATUS.ERROR);
-      setErrorMsg("Speech recognition not supported");
-      return;
-    }
+    try {
+      if (!modelPathRef.current) {
+        modelPathRef.current = await invoke("default_model_path");
+      }
 
-    const recognition = new SpeechRecognition();
-    recognition.lang = "en-US";
-    recognition.continuous = false;
-    recognition.interimResults = true;
-    recognitionRef.current = recognition;
+      const result = await invoke("transcribe_voice", {
+        modelPath: modelPathRef.current,
+      });
 
-    recognition.onstart = () => {
-      setStatus(STATUS.LISTENING);
-      setTranscript("");
-    };
+      setStatus(STATUS.PROCESSING);
 
-    recognition.onresult = (e) => {
-      const text = Array.from(e.results)
-        .map((r) => r[0].transcript)
-        .join("");
-      setTranscript(text);
-
-      if (e.results[e.results.length - 1].isFinal) {
+      if (result && result.trim()) {
+        setTranscript(result.trim());
         setStatus(STATUS.DONE);
-        // Stage 3 will pick up the final transcript here
-        hideTimerRef.current = setTimeout(hideWindow, 1500);
+        // Stage 3 will handle the command here
+        hideTimerRef.current = setTimeout(hideWindow, 1800);
+      } else {
+        await hideWindow();
       }
-    };
-
-    recognition.onerror = (e) => {
-      if (e.error === "no-speech") {
-        hideWindow();
-        return;
-      }
+    } catch (err) {
+      const msg = String(err);
+      setErrorMsg(msg.includes("model") || msg.includes("No such file")
+        ? "Model not found — see setup instructions"
+        : msg);
       setStatus(STATUS.ERROR);
-      setErrorMsg(e.error);
-      hideTimerRef.current = setTimeout(hideWindow, 2000);
-    };
-
-    recognition.onend = () => {
-      if (status !== STATUS.DONE && status !== STATUS.ERROR) {
-        hideWindow();
-      }
-    };
-
-    recognition.start();
+      hideTimerRef.current = setTimeout(hideWindow, 3000);
+    }
   };
 
   useEffect(() => {
-    const unlisten = listen("shortcut-triggered", () => {
+    const unlistenShortcut = listen("shortcut-triggered", () => {
       clearTimeout(hideTimerRef.current);
-      setTranscript("");
-      setErrorMsg("");
-      setStatus(STATUS.LISTENING);
-      // Small delay to let the window render before starting mic
-      setTimeout(startListening, 100);
+      startListening();
+    });
+
+    const unlistenLevel = listen("audio-level", (e) => {
+      setLevel(e.payload);
     });
 
     const handleClick = async (e) => {
       const overlay = document.getElementById("overlay");
       if (overlay && !overlay.contains(e.target)) {
-        recognitionRef.current?.abort();
+        clearTimeout(hideTimerRef.current);
         await hideWindow();
       }
     };
     window.addEventListener("click", handleClick);
 
     return () => {
-      unlisten.then((fn) => fn());
+      unlistenShortcut.then((fn) => fn());
+      unlistenLevel.then((fn) => fn());
       window.removeEventListener("click", handleClick);
-      recognitionRef.current?.abort();
       clearTimeout(hideTimerRef.current);
     };
   }, []);
@@ -108,20 +96,18 @@ function App() {
   return (
     <div className="app-root">
       <div id="overlay" className={`overlay ${transcript ? "has-transcript" : ""}`}>
-        <StatusIcon status={status} />
+        <LeftIcon status={status} />
         <div className="text-area">
           {transcript ? (
             <p className="transcript">{transcript}</p>
+          ) : status === STATUS.LISTENING ? (
+            <Waveform level={level} />
+          ) : status === STATUS.PROCESSING ? (
+            <p className="main-text">Processing…</p>
           ) : (
             <>
-              <p className="listening-text">
-                {status === STATUS.ERROR ? "Error" : "Listening…"}
-              </p>
-              {status === STATUS.ERROR ? (
-                <p className="hint-text">{errorMsg}</p>
-              ) : (
-                <p className="hint-text">speak your command</p>
-              )}
+              <p className="main-text">Error</p>
+              <p className="hint-text">{errorMsg}</p>
             </>
           )}
         </div>
@@ -130,26 +116,34 @@ function App() {
   );
 }
 
-function StatusIcon({ status }) {
-  if (status === STATUS.PROCESSING) {
-    return (
-      <div className="icon-wrap processing">
-        <Loader size={26} strokeWidth={2} />
-      </div>
-    );
-  }
-  if (status === STATUS.ERROR) {
-    return (
-      <div className="icon-wrap error">
-        <MicOff size={26} strokeWidth={2} />
-      </div>
-    );
-  }
+function Waveform({ level }) {
   return (
-    <div className={`icon-wrap ${status === STATUS.DONE ? "done" : "listening"}`}>
-      <Mic size={26} strokeWidth={2} />
+    <div className="waveform">
+      {Array.from({ length: BAR_COUNT }, (_, i) => {
+        const barLevel = Math.max(0.08, level * (0.5 + BAR_PHASES[i] * 0.8));
+        return (
+          <div
+            key={i}
+            className="waveform-bar"
+            style={{ "--bar-level": barLevel }}
+          />
+        );
+      })}
     </div>
   );
+}
+
+function LeftIcon({ status }) {
+  if (status === STATUS.PROCESSING) {
+    return <div className="icon-wrap processing"><Loader size={22} strokeWidth={2} /></div>;
+  }
+  if (status === STATUS.ERROR) {
+    return <div className="icon-wrap error"><MicOff size={22} strokeWidth={2} /></div>;
+  }
+  if (status === STATUS.DONE) {
+    return <div className="icon-wrap done">✓</div>;
+  }
+  return null;
 }
 
 export default App;
