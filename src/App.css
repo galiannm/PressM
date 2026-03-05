@@ -88,6 +88,16 @@ body,
   word-break: break-word;
 }
 
+.intent-badge {
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  color: rgba(255, 255, 255, 0.4);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  margin-top: 2px;
+}
+
 /* Icon states */
 .icon-wrap {
   flex-shrink: 0;
